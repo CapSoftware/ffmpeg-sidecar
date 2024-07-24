@@ -170,31 +170,48 @@ pub fn download_ffmpeg_package(url: &str, download_dir: &Path) -> anyhow::Result
 pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Result<()> {
     let temp_dirname = UNPACK_DIRNAME;
     let temp_folder = binary_folder.join(temp_dirname);
+
+    println!("Unpacking ffmpeg from {:?} to {:?}", from_archive, temp_folder);
     create_dir_all(&temp_folder)?;
 
-    // Extract archive
-    Command::new("tar")
-        .arg("-xf")
-        .arg(from_archive)
-        .current_dir(&temp_folder)
-        .status()?
-        .success()
-        .then_some(())
-        .context("Failed to unpack ffmpeg")?;
+    println!("Extracting archive");
 
-    // Move binaries
-    let (ffmpeg, ffprobe) = if cfg!(target_os = "windows") {
-        let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (inner_folder.path().join("bin/ffmpeg.exe"), inner_folder.path().join("bin/ffprobe.exe"))
-    } else if cfg!(target_os = "linux") {
-        let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (inner_folder.path().join("./ffmpeg"), inner_folder.path().join("./ffprobe"))
-    } else if cfg!(target_os = "macos") {
-        let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (inner_folder.path().join("./ffmpeg"), inner_folder.path().join("./ffprobe"))
-    } else {
-        anyhow::bail!("Unsupported platform");
+    let extension = from_archive.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("");
+    println!("Extension: {:?}", extension);
+
+    // Determine the command based on the file extension
+    let mut unpack_command = match extension {
+        "zip" => Command::new("unzip"),
+        "tar" | "xz" | "gz" => Command::new("tar"),
+        _ => anyhow::bail!("Unsupported archive format"),
     };
+
+    // Set arguments based on the command
+    let unpack_args = match extension {
+        "zip" => vec!["-o", from_archive.to_str().unwrap(), "-d", temp_folder.to_str().unwrap()],
+        "tar" | "xz" | "gz" =>
+            vec!["-xf", from_archive.to_str().unwrap(), "-C", temp_folder.to_str().unwrap()],
+        _ => vec![],
+    };
+
+    println!("Unpacking command: {:?}", unpack_command);
+    println!("Unpacking args: {:?}", unpack_args);
+
+    // Log what files are inside the temp folder
+    let files = read_dir(&temp_folder)?
+        .filter_map(|entry| entry.ok()) // Filter out any errors and unwrap the Result
+        .map(|entry| entry.path()) // Get the path of each entry
+        .collect::<Vec<_>>(); // Collect paths into a Vec
+
+    println!("Files: {:?}", files);
+
+    println!("Running command: {:?} {}", unpack_command, unpack_args.join(" "));
+
+    // Execute the command
+    let status = unpack_command.args(unpack_args).status()?;
+    if !status.success() {
+        anyhow::bail!("Failed to unpack ffmpeg ({})", extension);
+    }
 
     // Move binaries
     let move_bin = |path: &Path| {
@@ -205,21 +222,41 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
                     format!("Path {} does not have a file_name", path.to_string_lossy())
                 )?
         );
-        rename(path, file_name)?;
-        anyhow::Ok(())
+        if path.exists() {
+            rename(path, &file_name)?;
+        } else {
+            println!("Expected binary not found: {:?}", path);
+            return Err(anyhow::anyhow!("Binary not found: {:?}", path));
+        }
+        Ok(())
     };
 
-    move_bin(&ffmpeg)?;
-    move_bin(&ffprobe)?;
+    // Adjust paths for Windows and Unix-like systems
+    let (ffmpeg_bin, ffprobe_bin) = if cfg!(target_os = "windows") {
+        ("ffmpeg.exe", "ffprobe.exe")
+    } else {
+        ("ffmpeg", "ffprobe")
+    };
+
+    let ffmpeg_path = temp_folder.join(ffmpeg_bin);
+    let ffprobe_path = temp_folder.join(ffprobe_bin);
+
+    move_bin(&ffmpeg_path)?;
+    move_bin(&ffprobe_path)?;
 
     // Delete archive and unpacked files
     if temp_folder.exists() && temp_folder.is_dir() {
+        println!("Removing temp folder {:?}", temp_folder);
         remove_dir_all(&temp_folder)?;
+    } else {
+        println!("Temp folder not found or not a directory: {:?}", temp_folder);
     }
 
     if from_archive.exists() {
+        println!("Removing archive {:?}", from_archive);
         remove_file(from_archive)?;
+    } else {
+        println!("Archive file not found: {:?}", from_archive);
     }
-
     Ok(())
 }
