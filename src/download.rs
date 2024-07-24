@@ -196,10 +196,11 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
             inner_folder.path().join("./ffprobe"),
         )
     } else if cfg!(target_os = "macos") {
+        let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
         (
-            temp_folder.join("ffmpeg"),
-            temp_folder.join("ffplay"), // <-- no ffplay on mac
-            temp_folder.join("ffprobe"), // <-- no ffprobe on mac
+            inner_folder.path().join("./ffmpeg"),
+            inner_folder.path().join("./ffplay"),
+            inner_folder.path().join("./ffprobe"), // assuming ffprobe is also included
         )
     } else {
         anyhow::bail!("Unsupported platform");
