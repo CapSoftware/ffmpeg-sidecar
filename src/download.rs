@@ -39,7 +39,7 @@ pub fn ffmpeg_download_url() -> anyhow::Result<&'static str> {
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
         Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg-7.0.1.zip")
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg6arm.zip") // Mac M1
+        Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpegarm.zip") // Mac M1
     } else {
         anyhow::bail!(
             "Unsupported platform; you can provide your own URL instead and call download_ffmpeg_package directly."
