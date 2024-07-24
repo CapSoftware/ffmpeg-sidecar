@@ -37,7 +37,7 @@ pub fn ffmpeg_download_url() -> anyhow::Result<&'static str> {
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg-release-amd64-static.tar.xz")
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg-7.0.1.7z")
+        Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg-7.0.1.zip")
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         Ok("https://cap-ffmpeg.s3.amazonaws.com/ffmpeg6arm.zip") // Mac M1
     } else {
