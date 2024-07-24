@@ -165,6 +165,8 @@ pub fn download_ffmpeg_package(url: &str, download_dir: &Path) -> anyhow::Result
 
 /// After downloading, unpacks the archive to a folder, moves the binaries to
 /// their final location, and deletes the archive and temporary folder.
+// After downloading, unpacks the archive to a folder, moves the binaries to
+// their final location, and deletes the archive and temporary folder.
 pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Result<()> {
     let temp_dirname = UNPACK_DIRNAME;
     let temp_folder = binary_folder.join(temp_dirname);
@@ -181,27 +183,15 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
         .context("Failed to unpack ffmpeg")?;
 
     // Move binaries
-    let (ffmpeg, ffplay, ffprobe) = if cfg!(target_os = "windows") {
+    let (ffmpeg, ffprobe) = if cfg!(target_os = "windows") {
         let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (
-            inner_folder.path().join("bin/ffmpeg.exe"),
-            inner_folder.path().join("bin/ffplay.exe"),
-            inner_folder.path().join("bin/ffprobe.exe"),
-        )
+        (inner_folder.path().join("bin/ffmpeg.exe"), inner_folder.path().join("bin/ffprobe.exe"))
     } else if cfg!(target_os = "linux") {
         let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (
-            inner_folder.path().join("./ffmpeg"),
-            inner_folder.path().join("./ffplay"), // <- no ffplay on linux
-            inner_folder.path().join("./ffprobe"),
-        )
+        (inner_folder.path().join("./ffmpeg"), inner_folder.path().join("./ffprobe"))
     } else if cfg!(target_os = "macos") {
         let inner_folder = read_dir(&temp_folder)?.next().context("Failed to get inner folder")??;
-        (
-            inner_folder.path().join("./ffmpeg"),
-            inner_folder.path().join("./ffplay"),
-            inner_folder.path().join("./ffprobe"), // assuming ffprobe is also included
-        )
+        (inner_folder.path().join("./ffmpeg"), inner_folder.path().join("./ffprobe"))
     } else {
         anyhow::bail!("Unsupported platform");
     };
@@ -220,14 +210,7 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
     };
 
     move_bin(&ffmpeg)?;
-
-    if ffprobe.exists() {
-        move_bin(&ffprobe)?;
-    }
-
-    if ffplay.exists() {
-        move_bin(&ffplay)?;
-    }
+    move_bin(&ffprobe)?;
 
     // Delete archive and unpacked files
     if temp_folder.exists() && temp_folder.is_dir() {
