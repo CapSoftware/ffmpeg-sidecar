@@ -167,6 +167,8 @@ pub fn download_ffmpeg_package(url: &str, download_dir: &Path) -> anyhow::Result
 /// their final location, and deletes the archive and temporary folder.
 // After downloading, unpacks the archive to a folder, moves the binaries to
 // their final location, and deletes the archive and temporary folder.
+// ... existing code ...
+
 pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Result<()> {
     let temp_dirname = UNPACK_DIRNAME;
     let temp_folder = binary_folder.join(temp_dirname);
@@ -179,33 +181,40 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
     let extension = from_archive.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("");
     println!("Extension: {:?}", extension);
 
-    // Determine the command based on the file extension
-    let mut unpack_command = match extension {
-        "zip" => Command::new("unzip"),
-        "tar" | "xz" | "gz" => Command::new("tar"),
-        _ => anyhow::bail!("Unsupported archive format"),
-    };
-
-    // Set arguments based on the command
-    let unpack_args = match extension {
-        "zip" => vec!["-o", from_archive.to_str().unwrap(), "-d", temp_folder.to_str().unwrap()],
-        "tar" | "xz" | "gz" =>
-            vec!["-xf", from_archive.to_str().unwrap(), "-C", temp_folder.to_str().unwrap()],
-        _ => vec![],
+    // Determine the command based on the file extension and OS
+    let (mut unpack_command, unpack_args) = if cfg!(target_os = "windows") {
+        if extension == "zip" {
+            (
+                Command::new("powershell"),
+                vec![
+                    "-Command",
+                    "Expand-Archive",
+                    "-Path",
+                    from_archive.to_str().unwrap(),
+                    "-DestinationPath",
+                    temp_folder.to_str().unwrap(),
+                    "-Force",
+                ],
+            )
+        } else {
+            anyhow::bail!("Unsupported archive format for Windows");
+        }
+    } else {
+        match extension {
+            "zip" => (
+                Command::new("unzip"),
+                vec!["-o", from_archive.to_str().unwrap(), "-d", temp_folder.to_str().unwrap()],
+            ),
+            "tar" | "xz" | "gz" => (
+                Command::new("tar"),
+                vec!["-xf", from_archive.to_str().unwrap(), "-C", temp_folder.to_str().unwrap()],
+            ),
+            _ => anyhow::bail!("Unsupported archive format"),
+        }
     };
 
     println!("Unpacking command: {:?}", unpack_command);
     println!("Unpacking args: {:?}", unpack_args);
-
-    // Log what files are inside the temp folder
-    let files = read_dir(&temp_folder)?
-        .filter_map(|entry| entry.ok()) // Filter out any errors and unwrap the Result
-        .map(|entry| entry.path()) // Get the path of each entry
-        .collect::<Vec<_>>(); // Collect paths into a Vec
-
-    println!("Files: {:?}", files);
-
-    println!("Running command: {:?} {}", unpack_command, unpack_args.join(" "));
 
     // Execute the command
     let status = unpack_command.args(unpack_args).status()?;
@@ -213,14 +222,19 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
         anyhow::bail!("Failed to unpack ffmpeg ({})", extension);
     }
 
+    // List contents of the temp folder for debugging
+    println!("Contents of temp folder after extraction:");
+    for entry in read_dir(&temp_folder)? {
+        let entry = entry?;
+        println!("{:?}", entry.path());
+    }
+
     // Move binaries
     let move_bin = |path: &Path| {
         let file_name = binary_folder.join(
             path
                 .file_name()
-                .with_context(||
-                    format!("Path {} does not have a file_name", path.to_string_lossy())
-                )?
+                .with_context(|| format!("Path {} does not have a file_name", path.to_string_lossy()))?,
         );
         if path.exists() {
             rename(path, &file_name)?;
@@ -233,9 +247,12 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
 
     // Adjust paths for Windows and Unix-like systems
     let (ffmpeg_bin, ffprobe_bin) = if cfg!(target_os = "windows") {
-        ("ffmpeg.exe", "ffprobe.exe")
+        (
+            Path::new("ffmpeg-7.0.1-essentials_build").join("bin").join("ffmpeg.exe"),
+            Path::new("ffmpeg-7.0.1-essentials_build").join("bin").join("ffprobe.exe")
+        )
     } else {
-        ("ffmpeg", "ffprobe")
+        (PathBuf::from("ffmpeg"), PathBuf::from("ffprobe"))
     };
 
     let ffmpeg_path = temp_folder.join(ffmpeg_bin);
@@ -260,3 +277,5 @@ pub fn unpack_ffmpeg(from_archive: &PathBuf, binary_folder: &Path) -> anyhow::Re
     }
     Ok(())
 }
+
+// ... existing code ...
